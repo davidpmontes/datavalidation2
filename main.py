@@ -6,15 +6,19 @@ import statistics
 import matplotlib.pyplot as plt
 import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import math
 
 
 
-NUM_IMAGES_PER_GROUP = 2
+
+NUM_IMAGES_PER_GROUP = 1
 
 class DataValidator():
     x = []
     y = []
     kaverage = []
+    centroids = []
+    dictionary = {}
 
     def initializeArrays(self):
 
@@ -24,7 +28,7 @@ class DataValidator():
             self.kaverage.append([])
 
     def readFiles(self):
-        testing_directory_path = os.path.expanduser("~/Desktop/TestThis")
+        testing_directory_path = os.path.expanduser("~/Desktop/TestThis3")
     
         group_folders = os.listdir(testing_directory_path)
 
@@ -61,8 +65,12 @@ class DataValidator():
                                             if childpp.tag == "pt":
                                                 xtotal += int(childpp[0].text)
                                                 ytotal += int(childpp[1].text)
-                                        self.x[numimage].append(xtotal / 4)
-                                        self.y[numimage].append(ytotal / 4)
+                                        xcenter = xtotal / 4
+                                        ycenter = ytotal / 4
+                                        self.x[numimage].append(xcenter)
+                                        self.y[numimage].append(ycenter)
+                                        self.dictionary[( xcenter, ycenter) ] = group_folder
+
 
                     
                         #print("filename: {}, numimage: {}, numboxes: {}".format(filename, numimage, numboxes))
@@ -75,22 +83,51 @@ class DataValidator():
     def calculateKMeans(self):
         for i in range(0, NUM_IMAGES_PER_GROUP):
             knum = round(statistics.mean(self.kaverage[i]))
+            #print(knum)
 
             Data = {
                 'x': self.x[i],
                 'y': self.y[i]
             }
             df = DataFrame(Data,columns=['x','y'])
-            kmeans = KMeans(n_clusters=knum).fit(df)
-            centroids = kmeans.cluster_centers_
+            self.kmeans = KMeans(n_clusters=knum)
+            self.kmeans.fit(df)
+
+            self.centroids = self.kmeans.cluster_centers_
+
+            #print(self.x)
+            #print(self.y)
+            #print(self.centroids)
+            #print(self.kmeans.labels_)
+            #print(self.dictionary)
 
             plt.plot(self.x[i], self.y[i], 'ko')
 
             for j in range(0, knum):
-                plt.plot(centroids[j][0], centroids[j][1], 'ro')
+                plt.plot(self.centroids[j][0], self.centroids[j][1], 'ro')
 
             plt.title("cars00{}.xml".format(i + 1))
+            plt.gca().invert_yaxis()
             plt.show()
+
+    def giveScore(self):
+        for i in range(0, NUM_IMAGES_PER_GROUP):
+            for j in range(0, len(self.x[i])):
+                centroid = self.centroids[self.kmeans.labels_[j]]
+                cx = centroid[0]
+                cy = centroid[1]
+                px = self.x[i][j]
+                py = self.y[i][j]
+
+                # print(centroid[0])
+                # print(centroid[1])
+                # print(self.x[i][j])
+                # print(self.y[i][j])
+                distance = math.sqrt( ((cx - px) ** 2) + ((cy - py) ** 2) )
+                print("group: {} \t pt: ({},{}) \t distance:{} \t centroid: ({},{})".format(self.dictionary[(px, py)], px, py, distance, cx, cy))
+
+
+            
 
 
 if __name__ == "__main__":
@@ -98,3 +135,4 @@ if __name__ == "__main__":
     dv.initializeArrays()
     dv.readFiles()
     dv.calculateKMeans()
+    dv.giveScore()
