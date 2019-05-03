@@ -5,8 +5,7 @@ import numpy as np
 from pandas import DataFrame
 from sklearn.cluster import KMeans
 
-
-NUM_IMAGES_PER_GROUP = 2
+NUM_IMAGES_PER_GROUP = 10
 
 class DataValidator():
     groupNames = []
@@ -59,7 +58,7 @@ class DataValidator():
 
 
     def readFiles(self):
-        testing_directory_path = os.path.expanduser("~/Desktop/TestThis4")
+        testing_directory_path = os.path.expanduser("~/Desktop/TwoGroups")
     
         group_folders = os.listdir(testing_directory_path)
 
@@ -195,6 +194,24 @@ class DataValidator():
         plt.title("Labeling Errors for Image {}".format(i))
         plt.show()
 
+    def graphLabelingErrorsTotal(self):
+        self.groupNames.sort()
+        score = []
+
+        for groupName in self.groupNames:
+            totalScore = 0
+            for i in range(0, NUM_IMAGES_PER_GROUP):
+                totalScore = totalScore + self.groupNameToBoxScoreList[i][groupName]
+            score.append(totalScore)
+
+        index = np.arange(len(self.groupNames))
+        plt.bar(index, score)
+        plt.xlabel('Group Names', fontsize=10)
+        plt.ylabel('No of Errors', fontsize=10)
+        plt.xticks(index, self.groupNames, fontsize=10, rotation=30)
+        plt.title("Total Labeling Errors")
+        plt.show()
+
     def graphDistanceScoreForOneImage(self, i):
         self.groupNames.sort()
         score = []
@@ -214,17 +231,64 @@ class DataValidator():
         self.groupNames.sort()
         score = []
 
-
-
+        for groupName in self.groupNames:
+            totalScore = 0
+            for i in range(0, NUM_IMAGES_PER_GROUP):
+                totalScore = totalScore + self.groupNameToDistanceList[i][groupName]
+            score.append(totalScore)
 
         index = np.arange(len(self.groupNames))
         plt.bar(index, score)
         plt.xlabel('Group Names', fontsize=10)
         plt.ylabel('Distances', fontsize=10)
         plt.xticks(index, self.groupNames, fontsize=10, rotation=30)
-        plt.title("Total Distances")
+        plt.title("Total Distances From Clusters")
         plt.show()
 
+    def graphOverUnderTotal(self):
+        self.groupNames.sort()
+
+        N = len(self.groupNames)
+        #scoreOver = (1, 2, 3, 4)
+        scoreOver = []
+        scoreUnder = []
+
+        for groupName in self.groupNames:
+            totalScoreOver = 0
+            totalScoreUnder = 0
+            for i in range(0, NUM_IMAGES_PER_GROUP):
+                numBoxesFound = self.groupNameToNumBoxesList[i][groupName]
+                numBoxesCorrect = self.knum[i]
+                difference = numBoxesCorrect - numBoxesFound
+
+                if difference > 0: #under
+                    totalScoreUnder += difference
+                if difference < 0: #over
+                    totalScoreOver += abs(difference)
+
+            scoreOver.append(totalScoreOver)
+            scoreUnder.append(totalScoreUnder)
+
+        fig, ax = plt.subplots()
+
+        ind = np.arange(N)    # the x locations for the groups
+
+        width = 0.35         # the width of the bars
+        p1 = ax.bar(ind, scoreOver, width, color='r', bottom=0)
+
+
+        p2 = ax.bar(ind + width, scoreUnder, width,
+                    color='y', bottom=0)
+
+        ax.set_title('Over Under Scores')
+        ax.set_xticks(ind + width / 2)
+        ax.set_xticklabels(self.groupNames, rotation=30)
+
+        ax.legend((p1[0], p2[0]), ('ScoreOver', 'ScoreUnder'))
+        ax.yaxis.set_units(1)
+        ax.autoscale_view()
+
+        plt.show()
 
     def calculateGroupScoresForBoxNames(self):
         for i in range(0, NUM_IMAGES_PER_GROUP):
@@ -265,8 +329,13 @@ if __name__ == "__main__":
     dv.calculateGroupScoresForBoxNames()
     dv.debug()
 
-    dv.graphLabelingErrorsForOneImage(0)
-    dv.graphDistanceScoreForOneImage(0)
-    #dv.graphDistanceScoreTotal()
+    #dv.graphLabelingErrorsForOneImage(0)
+    dv.graphLabelingErrorsTotal()
+
+    #dv.graphDistanceScoreForOneImage(0)
+    dv.graphDistanceScoreTotal()
+
+    dv.graphOverUnderTotal()
+    
 
 
