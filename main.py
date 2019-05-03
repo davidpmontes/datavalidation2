@@ -1,27 +1,26 @@
-import os
-from pandas import DataFrame
-import xml.etree.ElementTree as ET
-from sklearn.cluster import KMeans
-import statistics
+import os, statistics, math, glob
 import matplotlib.pyplot as plt
-import tkinter as tk
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-import math
-import glob
+import xml.etree.ElementTree as ET
+import numpy as np
+from pandas import DataFrame
+from sklearn.cluster import KMeans
+
 
 NUM_IMAGES_PER_GROUP = 2
 
 class DataValidator():
+    groupNames = []
+
     # given image number, list of x coordinates for every box center from every group
     x = []
 
     # given image number, list of y coordinates for every box center from every group
     y = []
 
-    # given image number, "correct" (ie average) number of boxes for that image
+    # this collects the number of boxes for each image per group, builds knum
     kaverage = []
 
-
+    # given an image, contains "correct" number of boxes
     knum = []
 
     # given image number, list of centroid coordinates that correspond to box center from any group
@@ -30,9 +29,11 @@ class DataValidator():
 
     labels = []
 
-    # given image number, dictionary for centroid's index to box label popular
-    centroidsToBoxLabelPopular = []
-    centroidsToBoxLabelsList = []
+    # given image number, dictionary of group name to total labeling errors
+    groupNameToBoxScoreList = []
+
+    # given image number, dictionary for centroid's coordinate to box label popular
+    centroidsCoordinateToBoxLabel = []
 
     # given image number, given a coordinate, => group name and box name
     coordinatesToGroupNameAndBoxLabelsList = []
@@ -41,7 +42,10 @@ class DataValidator():
     coordinatesToGroupNameAndImageList = []
 
     # given image number, dictionary for group name to distance
-    GroupNamesToDistanceList = []
+    groupNameToDistanceList = []
+
+    # given image number, dictionary for group name to numboxes
+    groupNameToNumBoxesList = []
 
     def initializeArrays(self):
 
@@ -51,6 +55,7 @@ class DataValidator():
             self.kaverage.append([])
             self.coordinatesToGroupNameAndBoxLabelsList.append({})
             self.coordinatesToGroupNameAndImageList.append({})
+            self.groupNameToNumBoxesList.append({})
 
 
     def readFiles(self):
@@ -61,8 +66,9 @@ class DataValidator():
         for group_folder in group_folders:
             group_path = os.path.join(testing_directory_path, group_folder)
 
-
             if (os.path.isdir(group_path)):
+                if group_folder not in self.groupNames:
+                    self.groupNames.append(group_folder)
                 images = os.listdir(group_path)
 
                 numimage = 0
@@ -103,12 +109,11 @@ class DataValidator():
                                         self.coordinatesToGroupNameAndBoxLabelsList[numimage][( xcenter, ycenter) ] = (group_folder, boxName)
                                         self.coordinatesToGroupNameAndImageList[numimage][( xcenter, ycenter)] = group_folder + ", " + image
 
-
-                    
                         self.kaverage[numimage].append(numboxes)
+                        self.groupNameToNumBoxesList[numimage][group_folder] = numboxes
                         numimage += 1
     
-    def calculateKMeans(self):
+    def calculateKNum(self):
         for i in range(0, NUM_IMAGES_PER_GROUP):
             self.knum.append(round(statistics.mean(self.kaverage[i])))
 
@@ -121,9 +126,7 @@ class DataValidator():
             self.kmeans.fit(df)
             self.centroids.append(self.kmeans.cluster_centers_)
             self.labels.append(self.kmeans.labels_)
-
-            self.plotKMeans(i, self.knum[i])
-
+            #self.plotKMeans(i, self.knum[i])
 
     def plotKMeans(self, i, knum):
         plt.plot(self.x[i], self.y[i], 'ko')
@@ -135,13 +138,12 @@ class DataValidator():
         plt.gca().invert_yaxis()
         plt.show()
 
-    def calculateGroupScoresAndCollectBoxNamesForEachCluster(self):
+    def calculateGroupScoresAndBoxNamePerCluster(self):
         for i in range(0, NUM_IMAGES_PER_GROUP):
-            GroupNamesToDistanceForImage = {}
+            groupNamesToDistance = {}
             centroidToListOfBoxNames = {}
 
             # loop through every box from every group for a single image
-            #print(self.labels[i])
             for j in range(0, len(self.x[i])):
                 centroid = self.centroids[i][self.labels[i][j]]
                 cx = centroid[0]
@@ -151,57 +153,103 @@ class DataValidator():
 
                 boxLabel = self.coordinatesToGroupNameAndBoxLabelsList[i][( px, py) ][1]
 
-                if self.labels[i][j] in centroidToListOfBoxNames.keys():
-                    centroidToListOfBoxNames[self.labels[i][j]].append(boxLabel)
+                if (cx, cy) in centroidToListOfBoxNames.keys():
+                    centroidToListOfBoxNames[(cx, cy)].append(boxLabel)
                 else:
-                    centroidToListOfBoxNames[self.labels[i][j]] = [boxLabel]
+                    centroidToListOfBoxNames[(cx, cy)] = [boxLabel]
 
                 distance = math.sqrt( ((cx - px) ** 2) + ((cy - py) ** 2) )
-                #print("{}, {} \t pt: ({},{}) \t distance:{} \t centroid: ({},{})".format(self.coordinatesToGroupNameAndBoxName[(px, py)][0], self.coordinatesToGroupNameAndBoxName[(px, py)][1], px, py, distance, cx, cy))
                 
                 groupName = self.coordinatesToGroupNameAndBoxLabelsList[i][(px, py)][0]
-                if groupName in GroupNamesToDistanceForImage.keys():
-                    GroupNamesToDistanceForImage[groupName] = GroupNamesToDistanceForImage[groupName] + distance
+                if groupName in groupNamesToDistance.keys():
+                    groupNamesToDistance[groupName] = groupNamesToDistance[groupName] + distance
                 else:
-                    GroupNamesToDistanceForImage[groupName] = distance
+                    groupNamesToDistance[groupName] = distance
 
-            
-            self.GroupNamesToDistanceList.append(GroupNamesToDistanceForImage)
-            self.centroidsToBoxLabelsList.append(centroidToListOfBoxNames)
+            for key, value in centroidToListOfBoxNames.items():
+                centroidToListOfBoxNames[key] = self.most_frequent(value)
 
-    def processBoxLabels(self):
-        #loops through all images
+            self.groupNameToDistanceList.append(groupNamesToDistance)
+            self.centroidsCoordinateToBoxLabel.append(centroidToListOfBoxNames)
+
+    def debug(self):
         for i in range(0, NUM_IMAGES_PER_GROUP):
-            centroidToListOfBoxNamesPopular = {}
+            print("image: {}".format(i))
+            print("Labeling Errors Score: {}".format(self.groupNameToBoxScoreList[i]))
+            print("Box Placement Score: {}".format(self.groupNameToDistanceList[i]))
+            print("Num Boxes: {} => {}".format(self.groupNameToNumBoxesList[i], self.knum[i]))
+            print("")
 
-            #loops through all clusters of an image
-            print(i)
-            for j in range(0, self.knum[i]):
-                listOfBoxLabels = self.centroidsToBoxLabelsList[i][j]
-                mostPopularLabel = self.most_frequent(listOfBoxLabels)
+    def graphLabelingErrorsForOneImage(self, i):
+        self.groupNames.sort()
+        score = []
 
-                centroidToListOfBoxNamesPopular[j] = mostPopularLabel
+        for groupName in self.groupNames:
+            score.append(self.groupNameToBoxScoreList[i][groupName])
 
-            self.centroidsToBoxLabelPopular.append(centroidToListOfBoxNamesPopular)
+        index = np.arange(len(self.groupNames))
+        plt.bar(index, score)
+        plt.xlabel('Group Names', fontsize=10)
+        plt.ylabel('No of Errors', fontsize=10)
+        plt.xticks(index, self.groupNames, fontsize=10, rotation=30)
+        plt.title("Labeling Errors for Image {}".format(i))
+        plt.show()
 
-    def printGroupScores(self):
-        for i in range(0, NUM_IMAGES_PER_GROUP):
-            print(i)
-            print(self.centroidsToBoxLabelsList[i])
-            print(self.GroupNamesToDistanceList[i])
+    def graphDistanceScoreForOneImage(self, i):
+        self.groupNames.sort()
+        score = []
+
+        for groupName in self.groupNames:
+            score.append(self.groupNameToDistanceList[i][groupName])
+
+        index = np.arange(len(self.groupNames))
+        plt.bar(index, score)
+        plt.xlabel('Group Names', fontsize=10)
+        plt.ylabel('Distances', fontsize=10)
+        plt.xticks(index, self.groupNames, fontsize=10, rotation=30)
+        plt.title("Distances for Image {}".format(i))
+        plt.show()
+
+    def graphDistanceScoreTotal(self):
+        self.groupNames.sort()
+        score = []
+
+
+
+
+        index = np.arange(len(self.groupNames))
+        plt.bar(index, score)
+        plt.xlabel('Group Names', fontsize=10)
+        plt.ylabel('Distances', fontsize=10)
+        plt.xticks(index, self.groupNames, fontsize=10, rotation=30)
+        plt.title("Total Distances")
+        plt.show()
+
 
     def calculateGroupScoresForBoxNames(self):
         for i in range(0, NUM_IMAGES_PER_GROUP):
+            groupnameToBoxLabelErrorsScore = {}
+            
+            for j in range(0, len(self.x[i])):
+                centroid = self.centroids[i][self.labels[i][j]]
+                cx = centroid[0]
+                cy = centroid[1]
+                px = self.x[i][j]
+                py = self.y[i][j]
+                groupName = self.coordinatesToGroupNameAndBoxLabelsList[i][(px, py)][0]
+                boxname = self.coordinatesToGroupNameAndBoxLabelsList[i][(px, py)][1]
+                correctBoxName = self.centroidsCoordinateToBoxLabel[i][(cx, cy)]
 
-            # loop through every box from every group for a single image
-            print(self.x[i])
-            #for j in range(0, len(self.x[i])):
-                
-                #centroid = self.centroids[i]
-                #print(centroid)
-  
-                #self.listOfDictionariesForCentroidsToBoxLabelsPopular[i][()]
-                #boxLabel = self.coordinatesToGroupNameAndBoxName[( px, py) ][1]
+                if groupName in groupnameToBoxLabelErrorsScore.keys():
+                    if (boxname != correctBoxName):
+                        groupnameToBoxLabelErrorsScore[groupName] = groupnameToBoxLabelErrorsScore[groupName] + 1
+                else:
+                    if (boxname != correctBoxName):
+                        groupnameToBoxLabelErrorsScore[groupName] = 1
+                    else:
+                        groupnameToBoxLabelErrorsScore[groupName] = 0
+
+            self.groupNameToBoxScoreList.append(groupnameToBoxLabelErrorsScore)
     
 
     def most_frequent(self, List): 
@@ -212,10 +260,13 @@ if __name__ == "__main__":
     dv = DataValidator()
     dv.initializeArrays()
     dv.readFiles()
-    dv.calculateKMeans()
-    dv.calculateGroupScoresAndCollectBoxNamesForEachCluster()
-    dv.processBoxLabels()
+    dv.calculateKNum()
+    dv.calculateGroupScoresAndBoxNamePerCluster()
     dv.calculateGroupScoresForBoxNames()
+    dv.debug()
 
-    #dv.printGroupScores()
-    
+    dv.graphLabelingErrorsForOneImage(0)
+    dv.graphDistanceScoreForOneImage(0)
+    #dv.graphDistanceScoreTotal()
+
+
