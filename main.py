@@ -7,33 +7,38 @@ import matplotlib.pyplot as plt
 import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import math
+import glob
 
 NUM_IMAGES_PER_GROUP = 2
 
 class DataValidator():
-    # given image number, contains list of x coordinates for every box from every group
+    # given image number, list of x coordinates for every box center from every group
     x = []
 
-    # given image number, contains list of y coordinates for every box from every group
+    # given image number, list of y coordinates for every box center from every group
     y = []
 
-
+    # given image number, "correct" (ie average) number of boxes for that image
     kaverage = []
+
+
     knum = []
 
-    # given image number, given index for box, return centroid coordinate
+    # given image number, list of centroid coordinates that correspond to box center from any group
+    # in other words, we know which centroid each box belongs to
     centroids = []
+
     labels = []
 
     # given image number, dictionary for centroid's index to box label popular
-    listOfDictionariesForCentroidsToBoxLabelsPopular = []
-    listOfDictionariesForCentroidsToBoxLabels = []
+    centroidsToBoxLabelPopular = []
+    centroidsToBoxLabelsList = []
 
-    # given a coordinate, => group name and box name
-    coordinatesToGroupNameAndBoxName = {}
+    # given image number, given a coordinate, => group name and box name
+    coordinatesToGroupNameAndBoxLabelsList = []
 
-    # given a coordinate, => group name and image name
-    coordinatesToGroupNameAndImage = {}
+    # given image number, given a coordinate, => group name and image name
+    coordinatesToGroupNameAndImageList = []
 
     # given image number, dictionary for group name to distance
     GroupNamesToDistanceList = []
@@ -44,6 +49,9 @@ class DataValidator():
             self.x.append([])
             self.y.append([])
             self.kaverage.append([])
+            self.coordinatesToGroupNameAndBoxLabelsList.append({})
+            self.coordinatesToGroupNameAndImageList.append({})
+
 
     def readFiles(self):
         testing_directory_path = os.path.expanduser("~/Desktop/TestThis4")
@@ -53,10 +61,11 @@ class DataValidator():
         for group_folder in group_folders:
             group_path = os.path.join(testing_directory_path, group_folder)
 
-            numimage = 0
 
             if (os.path.isdir(group_path)):
                 images = os.listdir(group_path)
+
+                numimage = 0
                 
                 for image in images:
                     image_path = os.path.join(group_path, image)
@@ -91,8 +100,8 @@ class DataValidator():
                                         ycenter = ytotal / 4
                                         self.x[numimage].append(xcenter)
                                         self.y[numimage].append(ycenter)
-                                        self.coordinatesToGroupNameAndBoxName[( xcenter, ycenter) ] = (group_folder, boxName)
-                                        self.coordinatesToGroupNameAndImage[( xcenter, ycenter)] = group_folder + ", " + image
+                                        self.coordinatesToGroupNameAndBoxLabelsList[numimage][( xcenter, ycenter) ] = (group_folder, boxName)
+                                        self.coordinatesToGroupNameAndImageList[numimage][( xcenter, ycenter)] = group_folder + ", " + image
 
 
                     
@@ -140,7 +149,7 @@ class DataValidator():
                 px = self.x[i][j]
                 py = self.y[i][j]
 
-                boxLabel = self.coordinatesToGroupNameAndBoxName[( px, py) ][1]
+                boxLabel = self.coordinatesToGroupNameAndBoxLabelsList[i][( px, py) ][1]
 
                 if self.labels[i][j] in centroidToListOfBoxNames.keys():
                     centroidToListOfBoxNames[self.labels[i][j]].append(boxLabel)
@@ -150,7 +159,7 @@ class DataValidator():
                 distance = math.sqrt( ((cx - px) ** 2) + ((cy - py) ** 2) )
                 #print("{}, {} \t pt: ({},{}) \t distance:{} \t centroid: ({},{})".format(self.coordinatesToGroupNameAndBoxName[(px, py)][0], self.coordinatesToGroupNameAndBoxName[(px, py)][1], px, py, distance, cx, cy))
                 
-                groupName = self.coordinatesToGroupNameAndBoxName[(px, py)][0]
+                groupName = self.coordinatesToGroupNameAndBoxLabelsList[i][(px, py)][0]
                 if groupName in GroupNamesToDistanceForImage.keys():
                     GroupNamesToDistanceForImage[groupName] = GroupNamesToDistanceForImage[groupName] + distance
                 else:
@@ -158,7 +167,7 @@ class DataValidator():
 
             
             self.GroupNamesToDistanceList.append(GroupNamesToDistanceForImage)
-            self.listOfDictionariesForCentroidsToBoxLabels.append(centroidToListOfBoxNames)
+            self.centroidsToBoxLabelsList.append(centroidToListOfBoxNames)
 
     def processBoxLabels(self):
         #loops through all images
@@ -168,17 +177,17 @@ class DataValidator():
             #loops through all clusters of an image
             print(i)
             for j in range(0, self.knum[i]):
-                listOfBoxLabels = self.listOfDictionariesForCentroidsToBoxLabels[i][j]
+                listOfBoxLabels = self.centroidsToBoxLabelsList[i][j]
                 mostPopularLabel = self.most_frequent(listOfBoxLabels)
 
                 centroidToListOfBoxNamesPopular[j] = mostPopularLabel
 
-            self.listOfDictionariesForCentroidsToBoxLabelsPopular.append(centroidToListOfBoxNamesPopular)
+            self.centroidsToBoxLabelPopular.append(centroidToListOfBoxNamesPopular)
 
     def printGroupScores(self):
         for i in range(0, NUM_IMAGES_PER_GROUP):
             print(i)
-            print(self.listOfDictionariesForCentroidsToBoxLabels[i])
+            print(self.centroidsToBoxLabelsList[i])
             print(self.GroupNamesToDistanceList[i])
 
     def calculateGroupScoresForBoxNames(self):
